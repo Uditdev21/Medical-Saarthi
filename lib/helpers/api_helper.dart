@@ -8,7 +8,7 @@ class ApiHelper {
   static final String baseUrl = "http://10.0.2.2:8000";
   static dio.Dio? _dio;
 
-  final String token = Get.find<AuthServices>().token;
+  final String token = Get.find<AuthServices>().token.value;
 
   /// 🔹 Initialize Dio once
   static void init() {
@@ -26,6 +26,9 @@ class ApiHelper {
     );
 
     _dio = dio.Dio(options);
+    _dio!.options.validateStatus = (status) {
+      return status != null && status >= 200 && status <= 500;
+    };
     _dio!.interceptors.add(
       dio.InterceptorsWrapper(
         onRequest: (options, handler) {

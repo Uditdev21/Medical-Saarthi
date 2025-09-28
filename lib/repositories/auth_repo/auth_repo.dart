@@ -25,10 +25,15 @@ class AuthRepo {
   }
 
   /// 🔹 Register (returns AuthModels or null)
-  Future<AuthModels?> register(String email, String password) async {
+  Future<AuthModels?> register(
+    String email,
+    String password,
+    String name,
+  ) async {
     final response = await ApiHelper.postData('/user/register', {
       'email': email,
       'password': password,
+      'name': name,
     });
 
     if (response.statusCode == 200) {
@@ -36,7 +41,8 @@ class AuthRepo {
         return AuthModels.fromJson(response.data);
       } catch (e) {
         print("❌ Parsing error: $e");
-        return null;
+        // return null;
+        rethrow;
       }
     } else {
       print(

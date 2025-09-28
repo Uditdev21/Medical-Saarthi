@@ -1,13 +1,13 @@
-import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:healthapp/repositories/socket_repo.dart';
 import 'package:healthapp/view_models/services/auth_services.dart';
-import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
+import 'package:healthapp/views/messages_page.dart';
 
 class ChatService extends GetxService {
-  final SocketRepo socketRepo = SocketRepo();
+  final SocketRepo socketRepo = Get.put(SocketRepo());
 
   final ScrollController scrollController = ScrollController();
 
@@ -16,28 +16,54 @@ class ChatService extends GetxService {
   var chats = <Map<String, dynamic>>[].obs;
   var selectedChatId = ''.obs;
 
-  bool _socketInitialized = false; // Track if socket is initialized
-  // Replace with the correct pagination controller if using infinite_scroll_pagination package
-  // import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
   @override
   void onInit() {
     super.onInit();
-    if (!_socketInitialized) {
-      initSocket(Get.find<AuthServices>().token);
-      _socketInitialized = true;
+    // Get the current token and initialize socket
+    final currentToken = Get.find<AuthServices>().token.value;
+    log(
+      "🚀 ChatService initializing with token: ${currentToken.isEmpty ? 'EMPTY' : '${currentToken.substring(0, 10)}...'}",
+    );
+
+    if (currentToken.isNotEmpty) {
+      initSocket(currentToken);
     }
   }
 
-  // disposeSocket() {
-  //   socketRepo.disconnect();
-  //   _socketInitialized = false;
-  // }
+  /// Reinitialize socket connection with new token
+  void reinitializeWithToken(String newToken) {
+    log(
+      "🔄 Reinitializing socket with new token: ${newToken.isEmpty ? 'EMPTY' : '${newToken.substring(0, 10)}...'}",
+    );
+
+    // Clear old state
+    messages.clear();
+    chats.clear();
+    selectedChatId.value = '';
+    isConnected.value = false;
+
+    // Initialize with new token
+    if (newToken.isNotEmpty) {
+      initSocket(newToken);
+    }
+  }
 
   void initSocket(String token) {
+    log(
+      "🔌 Initializing socket with token: ${token.isEmpty ? 'EMPTY' : '${token.substring(0, 10)}...'}",
+    );
+
     socketRepo.connect(token);
 
-    socketRepo.onEvent("connect", (_) => isConnected.value = true);
-    socketRepo.onEvent("disconnect", (_) => isConnected.value = false);
+    socketRepo.onEvent("connect", (_) {
+      isConnected.value = true;
+      log("✅ Socket connected successfully");
+    });
+
+    socketRepo.onEvent("disconnect", (_) {
+      isConnected.value = false;
+      log("❌ Socket disconnected");
+    });
 
     // Clear previous listeners before adding new ones
     socketRepo.offEvent('recent_chats');
@@ -46,84 +72,78 @@ class ChatService extends GetxService {
     socketRepo.offEvent('new_message');
     socketRepo.offEvent('new_chat');
 
-    if (!_socketInitialized) {
-      print("Initializing socket connection...");
+    // Set up event listeners
+    _setupEventListeners();
+  }
 
-      socketRepo.onEvent('recent_chats', (data) {
-        chats.clear();
-        chats.addAll(List<Map<String, dynamic>>.from(data));
-        return data;
-      });
+  void _setupEventListeners() {
+    log("📡 Setting up socket event listeners...");
 
-      socketRepo.onEvent('chat_messages', (data) {
-        print("Chat messages received: $data");
-        messages.clear();
-        messages.addAll(List<Map<String, dynamic>>.from(data));
-        // WidgetsBinding.instance.addPostFrameCallback((_) {
-        //   if (scrollController.hasClients) {
-        //     scrollController.animateTo(
-        //       scrollController.position.maxScrollExtent,
-        //       // scrollController.position.
-        //       duration: const Duration(milliseconds: 300),
-        //       curve: Curves.easeOut,
-        //     );
-        //   }
-        // });
+    socketRepo.onEvent('recent_chats', (data) {
+      log("📨 Received recent_chats: ${data.length} chats");
+      chats.clear();
+      chats.addAll(List<Map<String, dynamic>>.from(data));
+    });
 
-        return data;
-      });
+    socketRepo.onEvent('chat_messages', (data) {
+      log("💬 Received chat_messages: ${data.length} messages");
+      messages.clear();
+      messages.addAll(List<Map<String, dynamic>>.from(data));
+    });
 
-      socketRepo.onEvent('message-send', (data) {
-        messages.insert(0, Map<String, dynamic>.from(data));
-      });
+    socketRepo.onEvent('message-send', (data) {
+      log("✉️ Message sent successfully");
+      messages.insert(0, Map<String, dynamic>.from(data));
+    });
 
-      socketRepo.onEvent('new_message', (data) {
-        print("New message received: $data");
-        messages.insert(0, Map<String, dynamic>.from(data));
-        // scrollController.animateTo(
-        //   scrollController.position.maxScrollExtent,
-        //   duration: const Duration(milliseconds: 300),
-        //   curve: Curves.easeOut,
-        // );
-        return data;
-      });
+    socketRepo.onEvent('new_message', (data) {
+      log("🆕 New message received");
+      messages.insert(0, Map<String, dynamic>.from(data));
+    });
 
-      socketRepo.onEvent("new_chat", (data) {
-        print("New chat created: $data[${data['chat_id']}]");
-        joinChat(data['chat_id'], data['key'] ?? 0);
-        Get.snackbar("New Chat", "A new chat has been created.");
-      });
-    }
+    socketRepo.onEvent("new_chat", (data) {
+      log("💬 New chat created: ${data['chat_id']}");
+      Get.to(
+        () => MessagesPageScreen(),
+        arguments: {"room_id": data['chat_id'] ?? ""},
+      );
+      joinChat(data['chat_id'], data['key'] ?? 0);
+      Get.snackbar("New Chat", "A new chat has been created.");
+    });
   }
 
   void fetchChats(int key) {
+    log("📥 Fetching chats with key: $key");
     socketRepo.emitEvent('get_recent_chats', {"key": key});
   }
 
   void joinChat(String chatId, int key) {
     selectedChatId.value = chatId;
-    print("Joining chat: $chatId");
+    log("🏠 Joining chat: $chatId");
     socketRepo.emitEvent("select_chat", {"chat_id": chatId, "key": key});
   }
 
   void sendChatMessage(String chatId, String text) {
+    log("📤 Sending message to chat: $chatId");
     socketRepo.emitEvent("send_message", {"chat_id": chatId, "content": text});
   }
 
   void leaveChat(String chatId) {
     messages.clear();
-    print("leaving chat: $chatId");
+    log("🚪 Leaving chat: $chatId");
     socketRepo.emitEvent("leave_chat", {"chat_id": chatId});
   }
 
-  void createChat(String medical_document_ai_context) {
+  void createChat(String medical_document_id) {
+    log("➕ Creating chat for document: $medical_document_id");
     socketRepo.emitEvent("create_chat", {
-      "medical_document_id": medical_document_ai_context,
+      "medical_document_id": medical_document_id,
     });
   }
 
   @override
   void onClose() {
+    log("🧹 ChatService closing...");
     socketRepo.disconnect();
     super.onClose();
   }

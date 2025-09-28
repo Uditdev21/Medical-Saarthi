@@ -4,13 +4,19 @@ import 'package:get/get.dart';
 import 'package:get/get_state_manager/src/simple/get_controllers.dart';
 import 'package:healthapp/models/health_doc_model.dart';
 import 'package:healthapp/repositories/health_doc_repo.dart';
+import 'package:healthapp/view_models/services/chat_socket.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 class HomePageController extends GetxController {
   // Define your state variables and methods here
   final RxList<healthDocModel> healthDocs = <healthDocModel>[].obs;
+
   final HealthDocRepo healthDocRepo = Get.put(HealthDocRepo());
+  final ChatService chatService = Get.isRegistered<ChatService>()
+      ? Get.find<ChatService>()
+      : Get.put(ChatService());
   final RxBool isLoading = false.obs;
+  // ChatService get chatServiceread => chatService;
 
   late final PagingController<int, healthDocModel>
   healthDocPaginationController;
